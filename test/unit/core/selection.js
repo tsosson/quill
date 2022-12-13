@@ -1,5 +1,6 @@
 import Selection, { Range } from '../../../core/selection';
 import Cursor from '../../../blots/cursor';
+import Emitter from '../../../core/emitter';
 
 describe('Selection', function() {
   beforeEach(function() {
@@ -109,7 +110,31 @@ describe('Selection', function() {
       expect(range.length).toEqual(3);
     });
 
-    it('between embed', function() {
+    it('between embed across lines', function() {
+      const selection = this.initialize(
+        Selection,
+        `
+        <p>
+          <img src="/assets/favicon.png">
+          <img src="/assets/favicon.png">
+        </p>
+        <p>
+          <img src="/assets/favicon.png">
+          <img src="/assets/favicon.png">
+        </p>`,
+      );
+      selection.setNativeRange(
+        this.container.firstChild,
+        1,
+        this.container.lastChild,
+        1,
+      );
+      const [range] = selection.getRange();
+      expect(range.index).toEqual(1);
+      expect(range.length).toEqual(3);
+    });
+
+    it('between embed across list', function() {
       const selection = this.initialize(
         Selection,
         `
@@ -127,8 +152,8 @@ describe('Selection', function() {
       selection.setNativeRange(
         this.container.firstChild,
         1,
-        this.container.lastChild.lastChild,
-        1,
+        this.container.lastChild.firstChild,
+        2,
       );
       const [range] = selection.getRange();
       expect(range.index).toEqual(1);
@@ -284,6 +309,19 @@ describe('Selection', function() {
       expect(range).toEqual(null);
       expect(selection.hasFocus()).toBe(false);
     });
+
+    it('after format', function(done) {
+      const selection = this.initialize(Selection, '<p>0123 567 9012</p>');
+      selection.setRange(new Range(5));
+      selection.format('bold', true);
+      selection.format('bold', false);
+      selection.setRange(new Range(8));
+      selection.emitter.once(Emitter.events.SCROLL_OPTIMIZE, () => {
+        const [range] = selection.getRange();
+        expect(range.index).toEqual(8);
+        done();
+      });
+    });
   });
 
   describe('format()', function() {
@@ -402,6 +440,40 @@ describe('Selection', function() {
       expect(this.container).toEqualHTML(`
         <p>01<em><span class="ql-cursor">${Cursor.CONTENTS}</span></em>23</p>
       `);
+    });
+
+    describe('unlink cursor', function() {
+      const cursorHTML = `<span class="ql-cursor">${Cursor.CONTENTS}</span>`;
+
+      it('one level', function() {
+        this.setup(
+          '<p><strong><a href="https://example.com">link</a></strong></p><p><br></p>',
+          4,
+        );
+        this.selection.format('bold', false);
+        expect(this.container).toEqualHTML(`
+          <p><strong><a href="https://example.com">link</a></strong>${cursorHTML}</p><p><br></p>
+        `);
+      });
+
+      it('nested formats', function() {
+        this.setup(
+          '<p><strong><em><a href="https://example.com">bold</a></em></strong></p><p><br></p>',
+          4,
+        );
+        this.selection.format('italic', false);
+        expect(this.container).toEqualHTML(`
+          <p><strong><em><a href="https://example.com">bold</a></em>${cursorHTML}</strong></p><p><br></p>
+        `);
+      });
+
+      it('ignore link format', function() {
+        this.setup('<p><strong>bold</strong></p><p><br></p>', 4);
+        this.selection.format('link', 'https://example.com');
+        expect(this.container).toEqualHTML(`
+          <p><strong>bold${cursorHTML}</strong></p><p><br></p>
+        `);
+      });
     });
   });
 
